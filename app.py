@@ -19,7 +19,9 @@ from werkzeug.exceptions import HTTPException
 
 from auth import (authenticate_user, change_password, check_rate_limit,
                   get_user_by_id, register_user, require_auth, require_role,
-                  sanitize, _load_users, _save_users)
+                  sanitize, _load_users, _save_users,
+                  generate_reset_token, validate_reset_token,
+                  consume_reset_token, admin_set_password)
 from config import Config
 from documents import (delete_document, download_document, list_documents_for_user,
                        share_document, upload_document, get_doc_by_id, revoke_share)
@@ -83,7 +85,7 @@ def set_security_headers(response):
     # Content Security Policy
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' https://cdn.jsdelivr.net; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "style-src 'self' https://cdn.jsdelivr.net; "
         "img-src 'self' data:; "
         "font-src 'self' https://cdn.jsdelivr.net; "
@@ -351,6 +353,64 @@ def profile():
     return render_template('profile.html', user=g.user)
 
 
+
+# ── Forgot / Reset password ────────────────────────────────────────────────────
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if g.user:
+        return redirect(url_for('dashboard'))
+
+    reset_link = None
+    if request.method == 'POST':
+        email = sanitize(request.form.get('email', '').strip())
+        if not email:
+            flash('Please enter your email address.', 'danger')
+        else:
+            ok, msg, token = generate_reset_token(email)
+            security_log.log_event('PASSWORD_RESET_REQUESTED', None,
+                                   {'email': email},
+                                   ip_address=request.remote_addr)
+            flash(msg, 'info')
+            # In production this token would be emailed.
+            # In dev we surface it on-screen so you can test the flow.
+            if token and Config.DEBUG:
+                reset_link = url_for('reset_password', token=token, _external=True)
+
+    return render_template('forgot_password.html', reset_link=reset_link)
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    if g.user:
+        return redirect(url_for('dashboard'))
+
+    # Validate token before rendering form
+    user, err = validate_reset_token(token)
+    if not user:
+        flash(err, 'danger')
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
+        new_pw  = request.form.get('new_password', '')
+        confirm = request.form.get('confirm_password', '')
+
+        if new_pw != confirm:
+            flash('Passwords do not match.', 'danger')
+            return render_template('reset_password.html', token=token, username=user['username'])
+
+        ok, msg = consume_reset_token(token, new_pw)
+        if ok:
+            security_log.password_changed(user['id'], request.remote_addr)
+            session_mgr.destroy_all_for_user(user['id'])
+            flash('Password reset! Please log in with your new password.', 'success')
+            return redirect(url_for('login'))
+        else:
+            flash(msg, 'danger')
+
+    return render_template('reset_password.html', token=token, username=user['username'])
+
+
 # ── Admin routes ───────────────────────────────────────────────────────────────
 
 @app.route('/admin')
@@ -398,6 +458,31 @@ def admin_unlock(target_id):
     return redirect(url_for('admin_dashboard'))
 
 
+
+
+@app.route('/admin/users/<target_id>/reset-password', methods=['POST'])
+@require_auth
+@require_role('admin')
+def admin_reset_password(target_id):
+    new_pw  = request.form.get('new_password', '')
+    confirm = request.form.get('confirm_password', '')
+
+    if new_pw != confirm:
+        flash('Passwords do not match.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+
+    ok, msg = admin_set_password(g.user['id'], target_id, new_pw)
+    if ok:
+        session_mgr.destroy_all_for_user(target_id)
+        security_log.log_event('ADMIN_PASSWORD_RESET', g.user['id'],
+                               {'target_user_id': target_id},
+                               severity='WARNING',
+                               ip_address=request.remote_addr)
+        flash(msg, 'success')
+    else:
+        flash(msg, 'danger')
+    return redirect(url_for('admin_dashboard'))
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
@@ -405,7 +490,7 @@ if __name__ == '__main__':
     ssl_ctx = (Config.TLS_CERT, Config.TLS_KEY) if use_tls else None
     app.run(
         host='0.0.0.0',
-        port=6005,
+        port=6015,
         ssl_context=ssl_ctx,
         debug=Config.DEBUG,
     )

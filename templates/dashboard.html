@@ -48,7 +48,7 @@
         <td>
           <div class="btn-group btn-group-sm">
             <a href="{{ url_for('download', doc_id=doc.id) }}"
-               class="btn btn-outline-success">⬇ Download</a>
+               class="btn btn-outline-success">Download</a>
             {% if doc.owner_id == user.id or user.role == 'admin' %}
             <a href="{{ url_for('share', doc_id=doc.id) }}"
                class="btn btn-outline-info">🔗 Share</a>
@@ -66,7 +66,7 @@
 </div>
 {% else %}
 <div class="text-center py-5 text-muted">
-  <div style="font-size:4rem">📭</div>
+  <div style="font-size:4rem"></div>
   <p class="mt-2">No documents yet.
     {% if user.role != 'guest' %}
     <a href="{{ url_for('upload') }}">Upload your first document</a>.

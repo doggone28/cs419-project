@@ -256,3 +256,124 @@ def change_password(user_id: str, old_password: str, new_password: str) -> tuple
     ).decode()
     _save_users(users)
     return True, 'Password changed successfully.'
+
+
+# ── Password Reset Tokens ─────────────────────────────────────────────────────
+
+def _load_reset_tokens() -> dict:
+    return _read_json(Config.RESET_TOKENS_FILE, default={})
+
+def _save_reset_tokens(tokens: dict) -> None:
+    import fcntl
+    lock_path = Config.RESET_TOKENS_FILE + '.lock'
+    with open(lock_path, 'w') as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            _write_json(Config.RESET_TOKENS_FILE, tokens)
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+def generate_reset_token(email: str) -> tuple[bool, str, str]:
+    """
+    Look up the user by email, create a time-limited reset token,
+    store it, and return (success, message, token).
+    The token should be emailed in production; here we return it
+    so the caller can display/log it.
+    """
+    import secrets as _secrets
+    user = get_user_by_email(email)
+    if not user:
+        # Don't reveal whether the email exists — always succeed from UI perspective
+        return True, 'If that email is registered, a reset link has been sent.', ''
+
+    token   = _secrets.token_urlsafe(32)
+    expires = time.time() + Config.RESET_TOKEN_EXPIRY
+
+    tokens = _load_reset_tokens()
+    # Purge any existing tokens for this user
+    tokens = {t: d for t, d in tokens.items() if d['user_id'] != user['id']}
+    tokens[token] = {
+        'user_id':    user['id'],
+        'email':      email,
+        'expires_at': expires,
+        'used':       False,
+    }
+    _save_reset_tokens(tokens)
+    return True, 'If that email is registered, a reset link has been sent.', token
+
+
+def validate_reset_token(token: str) -> tuple[dict | None, str]:
+    """
+    Return (user_dict, '') if the token is valid and unused.
+    Return (None, reason) if expired, used, or not found.
+    """
+    tokens = _load_reset_tokens()
+    entry  = tokens.get(token)
+    if not entry:
+        return None, 'Invalid or expired reset link.'
+    if entry['used']:
+        return None, 'This reset link has already been used.'
+    if time.time() > entry['expires_at']:
+        return None, 'This reset link has expired. Please request a new one.'
+    user = get_user_by_id(entry['user_id'])
+    if not user:
+        return None, 'User account no longer exists.'
+    return user, ''
+
+
+def consume_reset_token(token: str, new_password: str) -> tuple[bool, str]:
+    """
+    Validate token, update password, mark token as used.
+    Returns (success, message).
+    """
+    user, err = validate_reset_token(token)
+    if not user:
+        return False, err
+
+    ok, msg = validate_password(new_password)
+    if not ok:
+        return False, msg
+
+    # Update password
+    users = _load_users()
+    users[user['id']]['password_hash'] = bcrypt.hashpw(
+        new_password.encode(), bcrypt.gensalt(rounds=12)
+    ).decode()
+    users[user['id']]['failed_attempts'] = 0
+    users[user['id']]['locked_until']    = None
+    _save_users(users)
+
+    # Mark token used (don't delete so we can detect replay attempts)
+    tokens = _load_reset_tokens()
+    if token in tokens:
+        tokens[token]['used'] = True
+        _save_reset_tokens(tokens)
+
+    return True, 'Password reset successfully. You can now log in.'
+
+
+def admin_set_password(admin_id: str, target_user_id: str, new_password: str) -> tuple[bool, str]:
+    """
+    Admin directly sets a user's password without needing the old one.
+    Logs the action. Invalidates all existing sessions for the target user.
+    """
+    users = _load_users()
+    admin = users.get(admin_id)
+    if not admin or admin['role'] != 'admin':
+        return False, 'Unauthorized.'
+
+    target = users.get(target_user_id)
+    if not target:
+        return False, 'User not found.'
+
+    ok, msg = validate_password(new_password)
+    if not ok:
+        return False, msg
+
+    users[target_user_id]['password_hash'] = bcrypt.hashpw(
+        new_password.encode(), bcrypt.gensalt(rounds=12)
+    ).decode()
+    users[target_user_id]['failed_attempts'] = 0
+    users[target_user_id]['locked_until']    = None
+    _save_users(users)
+    return True, f"Password for '{target['username']}' has been reset."

@@ -48,24 +48,35 @@ def safe_filename_check(filename: str) -> str:
     """
     Sanitize filename — REJECT first, then sanitize:
       1. Reject null bytes (C-string termination attack).
-      2. Reject path traversal sequences BEFORE secure_filename can hide them.
-      3. werkzeug secure_filename normalises the result.
-      4. Whitelist: only alphanumeric, dash, underscore, dot.
-      5. Reject empty result (e.g. purely non-ASCII input).
+      2. URL-decode to catch encoded traversal like %2F%2E%2E.
+      3. Reject any path traversal sequences (../, ..\\, .... variants).
+      4. werkzeug secure_filename normalises the result.
+      5. Whitelist: only alphanumeric, dash, underscore, dot.
+      6. Reject empty result (e.g. purely non-ASCII input).
     """
+    from urllib.parse import unquote
+
     # 1. Null byte check
     if '\x00' in filename:
         raise ValueError('Invalid filename: null byte detected.')
 
-    # 2. Path traversal — check raw input before any normalization
-    raw = filename.replace('\\', '/')
-    if '..' in raw.split('/') or raw.startswith('/'):
-        raise ValueError('Invalid filename: path traversal detected.')
+    # 2. URL-decode to catch encoded traversal (%2F → /, %2E → ., etc.)
+    decoded = unquote(filename)
 
-    # 3. Normalize via werkzeug
-    filename = secure_filename(filename)
+    # 3. Path traversal — normalise separators then check every segment
+    normalised = decoded.replace('\\', '/')
+    if normalised.startswith('/'):
+        raise ValueError('Invalid filename: absolute path detected.')
+    segments = normalised.split('/')
+    for seg in segments:
+        # Reject any segment made entirely of dots (., .., ..., ....)
+        if seg and all(c == '.' for c in seg):
+            raise ValueError('Invalid filename: path traversal detected.')
 
-    # 4. Whitelist characters
+    # 4. Normalise via werkzeug
+    filename = secure_filename(decoded)
+
+    # 5. Whitelist characters
     if not filename or not re.match(r'^[\w\-\.]+$', filename):
         raise ValueError('Invalid filename: disallowed characters.')
 

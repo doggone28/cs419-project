@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Admin Dashboard — SecureDocs{% endblock %}
 {% block content %}
-<h2>⚙️ Admin Dashboard</h2>
+<h2> Admin Dashboard</h2>
 <hr>
 
 <!-- ── Users ──────────────────────────────────────────────────────────────── -->
@@ -10,42 +10,95 @@
   <table class="table table-hover align-middle">
     <thead class="table-dark">
       <tr>
-        <th>Username</th><th>Email</th><th>Role</th>
-        <th>Failed Attempts</th><th>Locked?</th><th>Actions</th>
+        <th>Username</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Status</th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for uid, u in users.items() %}
       <tr>
-        <td>{{ u.username }}</td>
-        <td>{{ u.email }}</td>
+        <td><strong>{{ u.username }}</strong></td>
+        <td class="text-muted small">{{ u.email }}</td>
+
+        <!-- Role change -->
         <td>
           <form method="POST" action="{{ url_for('admin_change_role', target_id=uid) }}"
                 class="d-flex gap-2">
             <select name="role" class="form-select form-select-sm" style="width:auto">
-              <option value="admin"  {% if u.role=='admin'  %}selected{% endif %}>admin</option>
-              <option value="user"   {% if u.role=='user'   %}selected{% endif %}>user</option>
-              <option value="guest"  {% if u.role=='guest'  %}selected{% endif %}>guest</option>
+              <option value="admin" {% if u.role=='admin' %}selected{% endif %}>admin</option>
+              <option value="user"  {% if u.role=='user'  %}selected{% endif %}>user</option>
+              <option value="guest" {% if u.role=='guest' %}selected{% endif %}>guest</option>
             </select>
             <button class="btn btn-sm btn-outline-primary">Save</button>
           </form>
         </td>
-        <td>{{ u.failed_attempts }}</td>
+
+        <!-- Lock status -->
         <td>
           {% if u.locked_until %}
             <span class="badge bg-danger">Locked</span>
+            <span class="text-muted small d-block">{{ u.failed_attempts }} failed attempts</span>
           {% else %}
-            <span class="badge bg-success">OK</span>
+            <span class="badge bg-success">Active</span>
           {% endif %}
         </td>
+
+        <!-- Action buttons -->
         <td>
-          {% if u.locked_until %}
-          <form method="POST" action="{{ url_for('admin_unlock', target_id=uid) }}">
-            <button class="btn btn-sm btn-warning">Unlock</button>
-          </form>
-          {% endif %}
+          <div class="d-flex flex-wrap gap-1">
+            {% if u.locked_until %}
+            <form method="POST" action="{{ url_for('admin_unlock', target_id=uid) }}">
+              <button class="btn btn-sm btn-warning">Unlock</button>
+            </form>
+            {% endif %}
+            <button class="btn btn-sm btn-outline-danger"
+                    data-bs-toggle="modal"
+                    data-bs-target="#resetModal-{{ uid }}">
+              Reset Password
+            </button>
+          </div>
         </td>
       </tr>
+
+      <!-- Reset Password Modal -->
+      <div class="modal fade" id="resetModal-{{ uid }}" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+              <h5 class="modal-title">🔑 Reset password for <strong>{{ u.username }}</strong></h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('admin_reset_password', target_id=uid) }}"
+                  novalidate autocomplete="off">
+              <div class="modal-body">
+                <div class="mb-3">
+                  <label class="form-label">New Password</label>
+                  <input type="password" class="form-control" name="new_password"
+                         minlength="12" maxlength="128" required
+                         placeholder="Min 12 chars, upper+lower+digit+special">
+                  <div class="form-text">12+ chars · uppercase · lowercase · digit · !@#$%^&amp;*</div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Confirm Password</label>
+                  <input type="password" class="form-control" name="confirm_password"
+                         maxlength="128" required>
+                </div>
+                <div class="alert alert-warning py-2 small mb-0">
+                  This will immediately log the user out of all active sessions.
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-danger">Reset Password</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
       {% endfor %}
     </tbody>
   </table>
@@ -56,20 +109,21 @@
 <div class="table-responsive">
   <table class="table table-hover align-middle">
     <thead class="table-dark">
-      <tr><th>File</th><th>Owner</th><th>Shares</th><th>Actions</th></tr>
+      <tr><th>File</th><th>Owner</th><th>Shares</th><th>Uploaded</th><th>Actions</th></tr>
     </thead>
     <tbody>
       {% for doc in docs %}
       <tr>
-        <td>{{ doc.original_name }}</td>
+        <td>📄 {{ doc.original_name }}</td>
         <td>{{ users.get(doc.owner_id, {}).get('username', doc.owner_id) }}</td>
         <td>{{ doc.shares | length }} user(s)</td>
+        <td><small class="text-muted">{{ doc.uploaded_at | datetime }}</small></td>
         <td>
           <div class="btn-group btn-group-sm">
-            <a href="{{ url_for('download', doc_id=doc.id) }}" class="btn btn-outline-success">⬇</a>
+            <a href="{{ url_for('download', doc_id=doc.id) }}" class="btn btn-outline-success">Download</a>
             <form method="POST" action="{{ url_for('delete_doc', doc_id=doc.id) }}"
                   onsubmit="return confirm('Delete?')" style="display:inline">
-              <button class="btn btn-outline-danger">🗑</button>
+              <button class="btn btn-outline-danger">Delete</button>
             </form>
           </div>
         </td>
