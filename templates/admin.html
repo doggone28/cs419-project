@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard — SecureDocs{% endblock %}
+{% block content %}
+<h2>⚙️ Admin Dashboard</h2>
+<hr>
+
+<!-- ── Users ──────────────────────────────────────────────────────────────── -->
+<h4>Users <span class="badge bg-secondary">{{ users | length }}</span></h4>
+<div class="table-responsive mb-5">
+  <table class="table table-hover align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>Username</th><th>Email</th><th>Role</th>
+        <th>Failed Attempts</th><th>Locked?</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for uid, u in users.items() %}
+      <tr>
+        <td>{{ u.username }}</td>
+        <td>{{ u.email }}</td>
+        <td>
+          <form method="POST" action="{{ url_for('admin_change_role', target_id=uid) }}"
+                class="d-flex gap-2">
+            <select name="role" class="form-select form-select-sm" style="width:auto">
+              <option value="admin"  {% if u.role=='admin'  %}selected{% endif %}>admin</option>
+              <option value="user"   {% if u.role=='user'   %}selected{% endif %}>user</option>
+              <option value="guest"  {% if u.role=='guest'  %}selected{% endif %}>guest</option>
+            </select>
+            <button class="btn btn-sm btn-outline-primary">Save</button>
+          </form>
+        </td>
+        <td>{{ u.failed_attempts }}</td>
+        <td>
+          {% if u.locked_until %}
+            <span class="badge bg-danger">Locked</span>
+          {% else %}
+            <span class="badge bg-success">OK</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if u.locked_until %}
+          <form method="POST" action="{{ url_for('admin_unlock', target_id=uid) }}">
+            <button class="btn btn-sm btn-warning">Unlock</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── All documents ─────────────────────────────────────────────────────── -->
+<h4>All Documents <span class="badge bg-secondary">{{ docs | length }}</span></h4>
+<div class="table-responsive">
+  <table class="table table-hover align-middle">
+    <thead class="table-dark">
+      <tr><th>File</th><th>Owner</th><th>Shares</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for doc in docs %}
+      <tr>
+        <td>{{ doc.original_name }}</td>
+        <td>{{ users.get(doc.owner_id, {}).get('username', doc.owner_id) }}</td>
+        <td>{{ doc.shares | length }} user(s)</td>
+        <td>
+          <div class="btn-group btn-group-sm">
+            <a href="{{ url_for('download', doc_id=doc.id) }}" class="btn btn-outline-success">⬇</a>
+            <form method="POST" action="{{ url_for('delete_doc', doc_id=doc.id) }}"
+                  onsubmit="return confirm('Delete?')" style="display:inline">
+              <button class="btn btn-outline-danger">🗑</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

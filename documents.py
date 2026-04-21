@@ -8,6 +8,7 @@ Handles:
   - Version history (audit trail)
 """
 
+import fcntl
 import os
 import re
 import time
@@ -28,7 +29,14 @@ def _load_docs() -> list:
 
 
 def _save_docs(docs: list) -> None:
-    _write_json(Config.DOCUMENTS_FILE, docs)
+    """Write docs list with an exclusive file lock to prevent concurrent overwrites."""
+    lock_path = Config.DOCUMENTS_FILE + '.lock'
+    with open(lock_path, 'w') as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            _write_json(Config.DOCUMENTS_FILE, docs)
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 def allowed_extension(filename: str) -> bool:

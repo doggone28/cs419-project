@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Upload — SecureDocs{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <div class="card shadow-sm">
+      <div class="card-header bg-dark text-white">
+        <h4 class="mb-0">⬆ Upload Document</h4>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('upload') }}"
+              enctype="multipart/form-data" novalidate>
+          <div class="mb-3">
+            <label for="document" class="form-label">Select File</label>
+            <input class="form-control" type="file" id="document" name="document"
+                   accept=".pdf,.txt,.docx,.png,.jpg,.jpeg" required>
+            <div class="form-text">Allowed: PDF, TXT, DOCX, PNG, JPG. Max 16 MB.</div>
+          </div>
+          <div class="mb-3">
+            <label for="description" class="form-label">Description (optional)</label>
+            <input type="text" class="form-control" id="description" name="description"
+                   maxlength="500" placeholder="Brief description…">
+          </div>
+          <button type="submit" class="btn btn-primary w-100">
+            🔒 Encrypt &amp; Upload
+          </button>
+        </form>
+      </div>
+    </div>
+    <div class="mt-2 text-muted small text-center">
+      Documents are AES-128 encrypted before being stored on disk.
+    </div>
+  </div>
+</div>
+{% endblock %}

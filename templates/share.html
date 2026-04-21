@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Share Document — SecureDocs{% endblock %}
+{% block content %}
+<h3>🔗 Share: {{ doc.original_name }}</h3>
+<hr>
+
+<div class="row">
+  <!-- ── Grant access ──────────────────────────────────────────────────── -->
+  <div class="col-md-6">
+    <div class="card mb-4">
+      <div class="card-header">Grant Access</div>
+      <div class="card-body">
+        <form method="POST">
+          <input type="hidden" name="action" value="share">
+          <div class="mb-3">
+            <label for="target_user_id" class="form-label">User</label>
+            <select class="form-select" id="target_user_id" name="target_user_id" required>
+              <option value="">— Select user —</option>
+              {% for uid, u in all_users.items() %}
+              <option value="{{ uid }}">{{ u.username }} ({{ u.role }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="permission" class="form-label">Permission</label>
+            <select class="form-select" id="permission" name="permission">
+              <option value="viewer">Viewer (read-only)</option>
+              <option value="editor">Editor (read + write)</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary">Grant Access</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Current shares ───────────────────────────────────────────────── -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">Current Shares</div>
+      <div class="card-body">
+        {% if doc.shares %}
+        <ul class="list-group">
+          {% for uid, perm in doc.shares.items() %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>{{ all_users[uid].username if uid in all_users else uid }}
+              <span class="badge bg-secondary ms-1">{{ perm }}</span>
+            </span>
+            <form method="POST">
+              <input type="hidden" name="action" value="revoke">
+              <input type="hidden" name="target_user_id" value="{{ uid }}">
+              <button class="btn btn-sm btn-outline-danger">Revoke</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted">No shares yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<a href="{{ url_for('dashboard') }}" class="btn btn-secondary mt-3">← Back</a>
+{% endblock %}

@@ -11,6 +11,7 @@ Run (with TLS):
 
 import os
 import sys
+from datetime import datetime
 
 from flask import (Flask, abort, flash, g, make_response, redirect,
                    render_template, request, send_file, url_for)
@@ -37,17 +38,31 @@ os.makedirs(Config.DATA_DIR,   exist_ok=True)
 os.makedirs(Config.LOGS_DIR,   exist_ok=True)
 os.makedirs(Config.UPLOAD_DIR, exist_ok=True)
 
+# ── Jinja2 custom filters ──────────────────────────────────────────────────────
+
+@app.template_filter('datetime')
+def format_datetime(ts):
+    """Convert a Unix timestamp float to a human-readable date/time string."""
+    try:
+        return datetime.fromtimestamp(float(ts)).strftime('%b %d, %Y  %I:%M %p')
+    except (TypeError, ValueError, OSError):
+        return '—'
+
 
 # ── Request lifecycle ──────────────────────────────────────────────────────────
 
 @app.before_request
 def load_session():
-    """Resolve session token → user object and attach to Flask `g`."""
-    token = request.cookies.get('session_token')
+    """Resolve session token to user object and attach to Flask g."""
+    import time as _time
+    token   = request.cookies.get('session_token')
     session = session_mgr.validate(token) if token else None
     if session:
-        g.user   = get_user_by_id(session['user_id'])
-        g.token  = token
+        g.user  = get_user_by_id(session['user_id'])
+        g.token = token
+        # Throttle writes: refresh last_activity at most once per minute
+        if _time.time() - session.get('last_activity', 0) > 60:
+            session_mgr.touch(token)
     else:
         g.user  = None
         g.token = None
@@ -390,7 +405,7 @@ if __name__ == '__main__':
     ssl_ctx = (Config.TLS_CERT, Config.TLS_KEY) if use_tls else None
     app.run(
         host='0.0.0.0',
-        port=5000,
+        port=6005,
         ssl_context=ssl_ctx,
         debug=Config.DEBUG,
     )

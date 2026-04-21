@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — SecureDocs{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>📁 My Documents</h2>
+  {% if user.role != 'guest' %}
+  <a href="{{ url_for('upload') }}" class="btn btn-primary">+ Upload Document</a>
+  {% endif %}
+</div>
+
+{% if docs %}
+<div class="table-responsive">
+  <table class="table table-hover align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>File Name</th>
+        <th>Description</th>
+        <th>Uploaded</th>
+        <th>Access</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in docs %}
+      <tr>
+        <td>
+          <span class="me-2">📄</span>
+          <strong>{{ doc.original_name }}</strong>
+        </td>
+        <td>{{ doc.description or '—' }}</td>
+        <td>
+          <small class="text-muted">
+            {{ doc.uploaded_at | datetime }}
+          </small>
+        </td>
+        <td>
+          {% if doc.owner_id == user.id %}
+            <span class="badge bg-primary">owner</span>
+          {% elif user.role == 'admin' %}
+            <span class="badge bg-warning text-dark">admin</span>
+          {% else %}
+            <span class="badge bg-secondary">
+              {% set perm = doc.shares.get(user.id, '') %}{{ perm if perm else 'viewer' }}
+            </span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="btn-group btn-group-sm">
+            <a href="{{ url_for('download', doc_id=doc.id) }}"
+               class="btn btn-outline-success">⬇ Download</a>
+            {% if doc.owner_id == user.id or user.role == 'admin' %}
+            <a href="{{ url_for('share', doc_id=doc.id) }}"
+               class="btn btn-outline-info">🔗 Share</a>
+            <form method="POST" action="{{ url_for('delete_doc', doc_id=doc.id) }}"
+                  onsubmit="return confirm('Delete this document?')" style="display:inline">
+              <button class="btn btn-outline-danger">🗑 Delete</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <div style="font-size:4rem">📭</div>
+  <p class="mt-2">No documents yet.
+    {% if user.role != 'guest' %}
+    <a href="{{ url_for('upload') }}">Upload your first document</a>.
+    {% endif %}
+  </p>
+</div>
+{% endif %}
+{% endblock %}
