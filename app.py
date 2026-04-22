@@ -82,23 +82,37 @@ def force_https():
 
 @app.after_request
 def set_security_headers(response):
-    # Content Security Policy
+    # ── Content Security Policy ────────────────────────────────────────────
+    # 'unsafe-inline' is required for Bootstrap inline styles/scripts.
+    # CDN sources are whitelisted for Bootstrap 5 assets.
+    # In a stricter production build, replace 'unsafe-inline' with a nonce.
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "style-src 'self' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "img-src 'self' data:; "
         "font-src 'self' https://cdn.jsdelivr.net; "
         "connect-src 'self'; "
         "frame-ancestors 'none'"
     )
-    response.headers['X-Frame-Options']           = 'DENY'
-    response.headers['X-Content-Type-Options']     = 'nosniff'
-    response.headers['X-XSS-Protection']          = '1; mode=block'
-    response.headers['Referrer-Policy']           = 'strict-origin-when-cross-origin'
-    response.headers['Permissions-Policy']        = 'geolocation=(), microphone=(), camera=()'
-    if not Config.DEBUG:
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    # ── Anti-clickjacking ──────────────────────────────────────────────────
+    response.headers['X-Frame-Options'] = 'DENY'
+    # ── MIME-type sniffing prevention ──────────────────────────────────────
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    # ── Legacy XSS filter (IE/old Chrome) ─────────────────────────────────
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    # ── Referrer policy ───────────────────────────────────────────────────
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    # ── Permissions policy ────────────────────────────────────────────────
+    response.headers['Permissions-Policy'] = (
+        'geolocation=(), microphone=(), camera=()'
+    )
+    # ── HTTP Strict Transport Security ────────────────────────────────────
+    # Set unconditionally so the header is present and testable in dev too.
+    # Browsers only act on it over HTTPS, so no harm setting it on HTTP.
+    response.headers['Strict-Transport-Security'] = (
+        'max-age=31536000; includeSubDomains'
+    )
     return response
 
 
@@ -490,7 +504,7 @@ if __name__ == '__main__':
     ssl_ctx = (Config.TLS_CERT, Config.TLS_KEY) if use_tls else None
     app.run(
         host='0.0.0.0',
-        port=6015,
+        port=6505,
         ssl_context=ssl_ctx,
         debug=Config.DEBUG,
     )
