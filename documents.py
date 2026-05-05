@@ -44,6 +44,39 @@ def allowed_extension(filename: str) -> bool:
     return ext in Config.ALLOWED_EXTENSIONS
 
 
+# Magic-byte signatures for each allowed extension.
+# Key: extension, Value: list of byte prefixes that identify the format.
+_MAGIC_BYTES: dict[str, list[bytes]] = {
+    'pdf':  [b'%PDF'],
+    'png':  [b'\x89PNG\r\n\x1a\n'],
+    'jpg':  [b'\xff\xd8\xff'],
+    'jpeg': [b'\xff\xd8\xff'],
+    'docx': [b'PK\x03\x04'],   # ZIP-based (Office Open XML)
+    'txt':  [],                 # No reliable magic bytes; skip magic check
+}
+
+def validate_mime_type(file_path: str, declared_extension: str) -> bool:
+    """
+    Read the first 16 bytes of the saved file and compare against known magic
+    bytes for the declared extension.  Returns True if the signature matches
+    (or if the extension has no reliable magic bytes, e.g. plain text).
+    """
+    ext      = declared_extension.lower()
+    expected = _MAGIC_BYTES.get(ext)
+    if expected is None:
+        return False          # extension not in our allow-list
+    if not expected:
+        return True           # txt: no magic check possible
+
+    try:
+        with open(file_path, 'rb') as f:
+            header = f.read(16)
+    except OSError:
+        return False
+
+    return any(header.startswith(sig) for sig in expected)
+
+
 def safe_filename_check(filename: str) -> str:
     """
     Sanitize filename — REJECT first, then sanitize:
@@ -138,10 +171,13 @@ def upload_document(file_storage, uploader_id: str, description: str = '') -> tu
 
     os.makedirs(Config.UPLOAD_DIR, exist_ok=True)
 
-    # Save raw upload to a temp location, then encrypt
+    # Save raw upload to a temp location, validate MIME, then encrypt
     tmp_path = enc_path + '.tmp'
     try:
         file_storage.save(tmp_path)
+        ext = filename.rsplit('.', 1)[-1].lower()
+        if not validate_mime_type(tmp_path, ext):
+            return False, 'File content does not match its extension (MIME mismatch).', None
         _enc.encrypt_file(tmp_path, enc_path)
     finally:
         if os.path.exists(tmp_path):

@@ -375,23 +375,17 @@ def forgot_password():
     if g.user:
         return redirect(url_for('dashboard'))
 
-    reset_link = None
     if request.method == 'POST':
         email = sanitize(request.form.get('email', '').strip())
         if not email:
             flash('Please enter your email address.', 'danger')
         else:
-            ok, msg, token = generate_reset_token(email)
             security_log.log_event('PASSWORD_RESET_REQUESTED', None,
                                    {'email': email},
                                    ip_address=request.remote_addr)
-            flash(msg, 'info')
-            # In production this token would be emailed.
-            # In dev we surface it on-screen so you can test the flow.
-            if token and Config.DEBUG:
-                reset_link = url_for('reset_password', token=token, _external=True)
+            flash('If that email is registered, a reset link has been sent.', 'info')
 
-    return render_template('forgot_password.html', reset_link=reset_link)
+    return render_template('forgot_password.html')
 
 
 @app.route('/reset-password/<token>', methods=['GET', 'POST'])
@@ -474,16 +468,26 @@ def admin_unlock(target_id):
 
 
 
-@app.route('/admin/users/<target_id>/reset-password', methods=['POST'])
+@app.route('/admin/users/<target_id>/reset-password', methods=['GET', 'POST'])
 @require_auth
 @require_role('admin')
 def admin_reset_password(target_id):
+    target_user = get_user_by_id(target_id)
+    if not target_user:
+        flash('User not found.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+
+    if request.method == 'GET':
+        return render_template('admin_reset_password.html',
+                               user=g.user, target_user=target_user)
+
     new_pw  = request.form.get('new_password', '')
     confirm = request.form.get('confirm_password', '')
 
     if new_pw != confirm:
         flash('Passwords do not match.', 'danger')
-        return redirect(url_for('admin_dashboard'))
+        return render_template('admin_reset_password.html',
+                               user=g.user, target_user=target_user)
 
     ok, msg = admin_set_password(g.user['id'], target_id, new_pw)
     if ok:
@@ -493,15 +497,21 @@ def admin_reset_password(target_id):
                                severity='WARNING',
                                ip_address=request.remote_addr)
         flash(msg, 'success')
+        return redirect(url_for('admin_dashboard'))
     else:
         flash(msg, 'danger')
-    return redirect(url_for('admin_dashboard'))
+        return render_template('admin_reset_password.html',
+                               user=g.user, target_user=target_user)
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    use_tls = '--tls' in sys.argv
+    # Use TLS by default if cert files exist; pass --no-tls to force plain HTTP
+    certs_exist = os.path.exists(Config.TLS_CERT) and os.path.exists(Config.TLS_KEY)
+    use_tls = certs_exist and '--no-tls' not in sys.argv
     ssl_ctx = (Config.TLS_CERT, Config.TLS_KEY) if use_tls else None
+    if not use_tls:
+        print("WARNING: Running without TLS. Generate cert.pem/key.pem for HTTPS.")
     app.run(
         host='0.0.0.0',
         port=6505,

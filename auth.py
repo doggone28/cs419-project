@@ -200,6 +200,8 @@ def authenticate_user(username: str, password: str) -> tuple[dict | None, str]:
         if users[user['id']]['failed_attempts'] >= Config.MAX_FAILED_ATTEMPTS:
             users[user['id']]['locked_until'] = time.time() + Config.LOCKOUT_DURATION
             _save_users(users)
+            from logger import security_log
+            security_log.account_locked(user['id'], username, None)
             return None, 'Account locked after too many failed attempts. Try again in 15 minutes.'
         _save_users(users)
         remaining = Config.MAX_FAILED_ATTEMPTS - users[user['id']]['failed_attempts']
